@@ -14,4 +14,6 @@ How to get started:
 
 NOTE: The code provided should not be used on production environments without prior testing. So far, little testing has been done, and only on Ubuntu Server 14.04 LTS.
 
-Please, report any issues you find. Contributions are very welcome!
+This code was wrote for a master's course project by me and Anastasios Poulidis (poulidae@gmail.com).
+
+Contributions are very welcome!
