@@ -1,42 +1,47 @@
 
 $server_hostname = "ubuntu"
 $server_domain = "monaco.studlab.os3.nl"
-$server_ip = "145.100.105.245"
+$server_ip = "145.100.105.242"
 
 class { '::postfix::server':
   myhostname              => $server_hostname,
   mydomain                => $server_domain,
   mydestination           => "\$myhostname, localhost.\$mydomain, localhost, $fqdn",
-  inet_interfaces         => "$server_ip, 127.0.0.1",
-  message_size_limit      => '15360000', # 15MB
+  inet_interfaces         => "127.0.0.1, $server_ip",
+  message_size_limit      => '15360000', # maximum message size limit 15MB
   mail_name               => 'secure mail daemon',
-  home_mailbox  	  => 'Maildir/',
+  home_mailbox  	  => 'Maildir/', # use Maildir format
   mail_spool_directory    => '/var/mail',
   mynetworks		  => '127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128',
   relay_domains 	  => $mydestination,
-  smtpd_helo_required     => true,
+  smtpd_helo_required     => true, #Require helo command
+  #Restrictions that the Postfix SMTP server applies in the context of a client HELO command
   smtpd_helo_restrictions => [
    'permit_mynetworks',
    'permit_sasl_authenticated',
-   'check_helo_access hash:/etc/postfix/helo_access',
+   'check_helo_access hash:/etc/postfix/helo_access', #Use helo_access file to determine bad helo options
    'reject_unauth_pipelining',
    'reject_non_fqdn_helo_hostname',
    'reject_invalid_helo_hostname',
   ],
+  #Restrictions that the Postfix SMTP server applies in the context of a client MAIL FROM command
   smtpd_sender_restrictions => [
     'permit_mynetworks',
     'reject_unknown_sender_domain',
   ],
+  #Restrictions that the Postfix SMTP server applies in the context of a client connection request
   smtpd_client_restrictions => [
     'permit_mynetworks',
     'permit_sasl_authenticated',
-    'check_client_access regexp:/etc/postfix/client_restrictions',
+    'check_client_access regexp:/etc/postfix/client_restrictions', #Use this regular expression file to define whitelists and blacklists 
     'reject_invalid_hostname',
     'reject_unknown_client_hostname', 
   ],
+  #Access restrictions that the Postfix SMTP server applies in the context of the SMTP DATA command
   smtpd_data_restrictions =>   [
     'reject_unauth_pipelining',
   ],
+  #Restrictions that the Postfix SMTP server applies in the context of a client RCPT TO command
   smtpd_recipient_restrictions => [
   'reject_non_fqdn_sender',
   'reject_non_fqdn_recipient',
@@ -49,15 +54,16 @@ class { '::postfix::server':
   'reject_unknown_recipient_domain',
   'reject_unknown_client',
   'reject_unauth_destination',
-  'reject_rbl_client zen.spamhaus.org',
+  'reject_rbl_client zen.spamhaus.org', #Restrict known spammers
   'reject_rbl_client b.barracudacentral.org',
   'reject_rbl_client cbl.abuseat.org',
-  'check_policy_service unix:private/policy-spf',
-  'check_policy_service inet:127.0.0.1:10023',
+  'check_policy_service unix:private/policy-spf', #Integrate Sender Policy Framework
+  'check_policy_service inet:127.0.0.1:10023', #PostfixGreylisting
   ],
-  smtpd_sasl_auth       => true,
+  smtpd_sasl_auth       => true, #Enable sasl
   #ssl                   => '',
-  submission            => true,
+  submission            => true, #Using Port 587 for Secure Submission
+  #Check mail headers
   header_checks         => [
   '#### non-RFC Compliance headers',
   '/[^[:print:]]{7}/  REJECT 2047rfc',
@@ -77,7 +83,7 @@ class { '::postfix::server':
   smtp_tls_security_level   => may,
   smtpd_tls_key_file => '/etc/ssl/private/ssl-cert-snakeoil.key',
   smtpd_tls_cert_file => '/etc/ssl/certs/ssl-cert-snakeoil.pem',
-  postgrey              => true,
+  postgrey              => true, #Enable postgreylisting
   #spamassassin          => false,
   # Send all emails to spampd on 10026
   #smtp_content_filter   => 'smtp:127.0.0.1:10026',
@@ -86,6 +92,7 @@ class { '::postfix::server':
   
 }
 
+#Enable DDoS mitigation options, decrease information given to unknown users, emable TLS, set SPF and ClamAV options
 augeas { "configure_postfix":
     context => "/files/etc/postfix/main.cf",
     changes => [ "set recipient_delimiter +",
@@ -94,7 +101,6 @@ augeas { "configure_postfix":
 		 "set smtpd_client_connection_rate_limit 30",
 		 "set queue_minfree 20971520",
 		 "set header_size_limit 51200",
-		 "set message_size_limit 10485760",
 		 "set smtpd_recipient_limit 100",
 		 "set show_user_unknown_table_name no",
 		 "set disable_vrfy_command yes",
@@ -111,9 +117,13 @@ augeas { "configure_postfix":
 		 "set receive_override_options no_address_mappings",
 	         "set smtpd_client_recipient_rate_limit 100",
 		 "set smtpd_client_message_rate_limit 100",
+		 "set smtpd_tls_cert_file /etc/ssl/private/ssl-cert-snakeoil.key",
+		 "set smtpd_tls_key_file  /etc/ssl/certs/ssl-cert-snakeoil.pem",
+		 "set smtpd_use_tls yes",
 		]
 }
 
+#Install SPF
 package { "postfix-policyd-spf-python":
   ensure => installed,
 }
@@ -129,6 +139,7 @@ file_line { 'spf1':
       line => '     user=nobody argv=/usr/bin/policyd-spf',
 }
 
+#Instal Dovecot MDA
 package { "dovecot-common":
   ensure => installed,
 }
@@ -174,6 +185,7 @@ service { "dovecot":
     enable  => "true",
 }
 
+#Install ClamAV
 package { "clamav":
   ensure => installed,
 }
@@ -255,17 +267,20 @@ service { "clamsmtp":
 }
 
 
+#Set postgrey options
 file_line { 'default_postgrey':
       path => '/etc/default/postgrey',
       line => 'POSTGREY_OPTS="--inet=127.0.0.1:60000 --delay=60"',
       match => 'POSTGREY_OPTS=',
 }
 
+#Create helo_access file
 file {'helo_access':
       path    => '/etc/postfix/helo_access',
       ensure  => present,
       mode    => 0644,
       content => "localhost REJECT_BadSender \n",
+      require => Class ['::postfix::server'],
     }
 ->
 file_line { 'helo_access1':
@@ -276,11 +291,13 @@ exec { "create helo db":
    command => "/usr/sbin/postmap /etc/postfix/helo_access",
 }
 
+#Create client_access file
 file {'client_access':
       path    => '/etc/postfix/client_restrictions',
       ensure  => present,
       mode    => 0644,
       content => "### WHITE LIST ### \n",
+      require => Class ['::postfix::server'],
     }
 ->
 file_line { 'client_access1':

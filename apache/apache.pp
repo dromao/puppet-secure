@@ -1,12 +1,15 @@
 node ubuntu {
 
 
-class { 'apache': 
+class { 'apache':
+	#Remove apache server and OS information 
 	server_signature => 'Off',
 	server_tokens => 'Prod',
+	#Run apache with non-privileged account
 	user => 'http-web',
 	group => 'http-web',
-        timeout => '60',
+	#Amount of time the server will wait for certain I/O events before it fails
+        timeout => '50',
 }
 
 exec { "enable_access_compat":
@@ -19,6 +22,7 @@ include apache::mod::rewrite
 
 include augeas
 
+#disable directory browser listing
 augeas { "configure_directory2":
     context => "/files/etc/apache2/apache2.conf",
     changes => [ "set Directory[2]/arg /var/www/html",
@@ -37,6 +41,7 @@ augeas { "configure_directory2":
     require => [ Augeas["configure_directory1"] ]
 }
 
+#disable access to root directory
 augeas { "configure_directory1":
     context => "/files/etc/apache2/apache2.conf",
     changes => [ "set Directory[1]/arg /",
@@ -52,6 +57,7 @@ augeas { "configure_directory1":
     # require => [ Class['apache'], Augeas["configure_directory1"] ]
 }
 
+#remove etag
 file_line { 'etag':
       path => '/etc/apache2/apache2.conf',
       line => 'FileETag None',
@@ -63,6 +69,7 @@ file_line { 'confs':
       line => 'IncludeOptional conf-enabled/*.conf'
 }
 
+#mitigate cross site scripting using HttpOnly and Secure flag in cookie
 file_line { 'set_cookie':
       path => '/etc/apache2/conf-enabled/security.conf',
       line => 'Header edit Set-Cookie ^(.*)$ $1;HttpOnly;Secure',
@@ -70,6 +77,7 @@ file_line { 'set_cookie':
       require => [ Class['apache'] ]
 }
 
+#prevent clickjacking attacks
 file_line { 'clickjacking':
       path => '/etc/apache2/conf-enabled/security.conf',
       line => 'Header always append X-Frame-Options SAMEORIGIN',
@@ -77,6 +85,7 @@ file_line { 'clickjacking':
       require => [ Class['apache'] ]
 }
 
+#set cross site scripting protection
 file_line { 'x-xss':
       path => '/etc/apache2/conf-enabled/security.conf',
       line => 'Header set X-XSS-Protection "1; mode=block"',
@@ -84,6 +93,7 @@ file_line { 'x-xss':
       require => [ Class['apache'] ]
 }
 
+#disable http1.0 unsecure protocol version
 file_line { 'disable_http1':
       path => '/etc/apache2/conf-enabled/security.conf',
       line => 'RewriteEngine On',
@@ -102,12 +112,7 @@ file_line { 'disable_http3':
       require => [ Class['apache'], File_line['disable_http2'] ]
 }
 
-file_line { 'timeout':
-      path => '/etc/apache2/apache2.conf',
-      line => 'Timeout 100',
-      require => [ Class['apache'] ]
-} 
-
+#Set Log Format
 file_line { 'log':
       path => '/etc/apache2/apache2.conf',
       line => 'LogFormat "%h %l %u %t \"%{sessionID}C\" \"%r\" %>s %b %T" common',
@@ -119,6 +124,7 @@ file { '/usr/lib/libxml2.so.2':
    target => '/usr/lib/x86_64-linux-gnu/libxml2.so.2',
 }
 
+#Install mod-security
 package { "libapache2-mod-security2":
     ensure => installed,
 }
@@ -163,6 +169,7 @@ file_line { 'modsec3':
       require => [ File_line['modsec2'] ]
 }
 
+#Download and include owasp rules
 include wget
 
 wget::fetch { "test":
@@ -283,6 +290,7 @@ augeas { "configure_mod":
 }
 */
 
+#Install mod evasive
 package { "libapache2-mod-evasive":
     ensure => installed,
 }
