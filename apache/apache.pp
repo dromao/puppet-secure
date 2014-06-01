@@ -258,24 +258,30 @@ file { 'symlink_load':
    require => File_line['sec_load']
 }
 
-	
+exec { 'mod_unique':
+command => '/usr/sbin/a2enmod unique_id',
+require => [ File['symlink_conf'], File['symlink_load'] ]
+}
+->	
 exec { 'mod_sec':
 command => '/usr/sbin/a2enmod security2',
 require => [ File['symlink_conf'], File['symlink_load'] ]
 }
 
-#augeas { "configure_mod":
-#    context => "/files/etc/apache2/mods-enabled/security2.conf",
-#    changes => [  "set IfModule/arg security2",
-       #          "set IfModule/directive[1]  "SecDataDir"",
-       #          "set IfModule/directive[1]/arg /var/cache/modsecurity",
-  #               "set IfModule/directive[2]   IncludeOptional",
- #                "set IfModule/directive[2]/arg /etc/modsecurity/*.conf",
-                # "set IfModule/directive[3]   Include",
-                # "set IfModule/directive[3]/arg \"/etc/modsecurity/activated_rules/*.conf\"",
-#    ],
-#    require => File['/etc/apache2/mods-enabled/security2.conf'] 
-#}
+/*
+augeas { "configure_mod":
+    context => "/files/etc/apache2/mods-enabled/security2.conf",
+    changes => [ "set IfModule/arg security2",
+                 "set IfModule/directive[1]  "SecDataDir"",
+                 "set IfModule/directive[1]/arg /var/cache/modsecurity",
+                 "set IfModule/directive[2]   IncludeOptional",
+                 "set IfModule/directive[2]/arg /etc/modsecurity/*.conf",
+                 "set IfModule/directive[3]   Include",
+                 "set IfModule/directive[3]/arg \"/etc/modsecurity/activated_rules/*.conf\"",
+    ],
+    require => File['/etc/apache2/mods-enabled/security2.conf'] 
+}
+*/
 
 package { "libapache2-mod-evasive":
     ensure => installed,
